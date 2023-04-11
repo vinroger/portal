@@ -1,6 +1,6 @@
+/* eslint-disable indent */
+/* eslint-disable no-nested-ternary */
 /* eslint-disable react/sort-comp */
-/* eslint-disable no-return-assign */
-/* eslint-disable no-underscore-dangle */
 /* eslint-disable no-prototype-builtins */
 import * as L from "leaflet";
 import "leaflet-draw";
@@ -44,6 +44,7 @@ import { CreateGenericToast } from "@portal/utils/ui/toasts";
 import AnnotatorInstanceSingleton from "./utils/annotator.singleton";
 import AnnotationMenu from "./menu";
 import ImageBar from "./imagebar";
+import AnalyticsBar from "./analyticsbar";
 import SettingsModal from "./settingsmodal";
 import FileModal from "./filemodal";
 import AnnotatorSettings from "./utils/annotatorsettings";
@@ -88,6 +89,9 @@ interface AnnotatorProps {
 }
 
 interface AnnotatorState {
+  currentVideoKey: string;
+  isAnalyticsMode: boolean;
+  videoAnalyticsResult: { fps: number; frames: any[] };
   /* Image List for Storing Project Files */
   assetList: Array<AssetAPIObject>;
   /* List of files whose predictions are cached  */
@@ -178,6 +182,7 @@ export default class Annotator extends Component<
   private project: string;
 
   /* Component Reference */
+  private analyticsbarRef: any;
   private imagebarRef: any;
 
   /* Annotation Operations Variables */
@@ -199,6 +204,7 @@ export default class Annotator extends Component<
   private toaster: Toaster;
   private progressToastInterval?: number;
   private refHandlers = {
+    // eslint-disable-next-line no-return-assign
     toaster: (ref: Toaster) => (this.toaster = ref),
   };
 
@@ -209,6 +215,9 @@ export default class Annotator extends Component<
     super(props);
 
     this.state = {
+      currentVideoKey: "",
+      isAnalyticsMode: false,
+      videoAnalyticsResult: { fps: 30, frames: [] },
       currentAssetAnnotations: [],
       userEditState: "None",
       changesMade: false,
@@ -359,7 +368,7 @@ export default class Annotator extends Component<
   }
 
   // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-  componentDidUpdate() {
+  componentDidUpdate(prevProps: any, prevState: any) {
     /* Obtain Tag Map for loaded Model */
     /* The conditional checks are necessary due to the use of setStates */
     if (
@@ -561,6 +570,7 @@ export default class Annotator extends Component<
       /* Set of all annotation IDs in annotationGroup */
       this.setState({
         hiddenAnnotations: new Set<string>(
+          // eslint-disable-next-line no-underscore-dangle
           Object.values((this.annotationGroup as any)._layers).map(
             (annotation: any) => annotation.options.annotationID as string
           )
@@ -732,6 +742,46 @@ export default class Annotator extends Component<
     });
   }
 
+  private tranformTagsByFrameToCharts(data: { frames: any; fps: number }) {
+    if (!data?.frames) return [];
+    const { frames } = data;
+    const transformedData: any[] = [];
+    Object.keys(frames).forEach(frame => {
+      const objects = frames[frame];
+      const filteredObjects = objects.filter(
+        (obj: { confidence: number }) => obj.confidence >= this.state.confidence
+      );
+      const tagsCount = filteredObjects.reduce(
+        (acc: { [x: string]: number }, obj: { tag: { name: any } }) => {
+          const tagName = obj.tag.name.replace(/"/g, "");
+          if (!acc[tagName]) {
+            acc[tagName] = 0;
+          }
+          acc[tagName] += 1;
+          return acc;
+        },
+        {}
+      );
+
+      const frameInt = parseInt(frame, 10);
+      const secondsInterval =
+        this.state.inferenceOptions.video.frameInterval / data.fps;
+      const quotient = frameInt / (1000 * secondsInterval);
+      const mediaTime = quotient * secondsInterval;
+      const minutes = Math.floor(mediaTime / 60);
+      const remainingSeconds = Math.floor(mediaTime % 60);
+
+      transformedData.push({
+        time: `${minutes}:${
+          remainingSeconds < 10 ? `0${remainingSeconds}` : remainingSeconds
+        }`,
+        ...tagsCount,
+      });
+    });
+
+    return transformedData;
+  }
+
   /**
    * Centralized Handler to Perform predictions on both Video and Images
    */
@@ -786,6 +836,8 @@ export default class Annotator extends Component<
         this.state.inferenceOptions.iou
       )
         .then(response => {
+          this.setState({ videoAnalyticsResult: response.data });
+
           if (this.currentAsset.url === asset.url && singleAnalysis) {
             const videoElement = this.videoOverlay.getElement();
             /**
@@ -1166,10 +1218,8 @@ export default class Annotator extends Component<
      */
 
     /* Checks if there is AssetReselection */
+    this.currentAsset.type = asset.type;
     const isAssetReselection = !(asset.assetUrl !== this.currentAsset.assetUrl);
-    console.log("asset", asset.url);
-    console.log("currentasset", this.currentAsset.url);
-    console.log("single analysis", singleAnalysis);
 
     const currentVideoElement = this.videoOverlay.getElement();
     if (!isAssetReselection) {
@@ -1303,6 +1353,9 @@ export default class Annotator extends Component<
           }, 150);
           /* Get inference if Video is Cached */
           if (asset.isCached && singleAnalysis) this.singleAnalysis(false);
+          else {
+            this.setState({ videoAnalyticsResult: { fps: 30, frames: [] } });
+          }
         } else {
           /** Set Focus */
           videoElement?.focus();
@@ -1311,7 +1364,6 @@ export default class Annotator extends Component<
           this.setState({});
         }
       };
-
       this.backgroundImg = document.querySelector(
         ".leaflet-pane.leaflet-overlay-pane video.leaflet-image-layer"
       );
@@ -1551,7 +1603,13 @@ export default class Annotator extends Component<
         <div className={"workspace"}>
           {/* Appends Styling Prefix if Image List is Collapsed */}
           <div
-            className={[isCollapsed, "image-list"].join("")}
+            className={
+              isCollapsed
+                ? "collapsed-image-list"
+                : this.state.isAnalyticsMode
+                ? "image-list-analytics"
+                : "image-list"
+            }
             id={"image-list"}
           >
             <Button
@@ -1564,6 +1622,22 @@ export default class Annotator extends Component<
                 }));
               }}
             />
+            {this.currentAsset.type === "video" && (
+              <Button
+                className={
+                  this.state.imageListCollapsed
+                    ? "analytics-button-collapsed"
+                    : "analytics-button"
+                }
+                icon={"grouped-bar-chart"}
+                onClick={() => {
+                  this.setState(prevState => ({
+                    isAnalyticsMode: !prevState.isAnalyticsMode,
+                  }));
+                }}
+              />
+            )}
+
             <div
               className={[collapsedButtonTheme, "collapse-button-effect"].join(
                 ""
@@ -1571,18 +1645,37 @@ export default class Annotator extends Component<
             />
             {/* Appends Styling Prefix */}
             <Card
-              className={[isCollapsed, "image-bar"].join("")}
+              className={
+                isCollapsed
+                  ? "collapse-image-bar"
+                  : this.state.isAnalyticsMode
+                  ? "image-bar-analytics"
+                  : "image-bar"
+              }
               id={"image-bar"}
             >
-              <ImageBar
-                ref={ref => {
-                  this.imagebarRef = ref;
-                }}
-                /* Only visible assets should be shown */
-                assetList={visibleAssets}
-                callbacks={{ selectAssetCallback: this.selectAsset }}
-                {...this.props}
-              />
+              {this.state.isAnalyticsMode ? (
+                <AnalyticsBar
+                  ref={ref => {
+                    this.analyticsbarRef = ref;
+                  }}
+                  analyticsData={this.tranformTagsByFrameToCharts(
+                    this.state.videoAnalyticsResult
+                  )}
+                  callbacks={{ selectAssetCallback: this.selectAsset }}
+                  {...this.props}
+                />
+              ) : (
+                <ImageBar
+                  ref={ref => {
+                    this.imagebarRef = ref;
+                  }}
+                  /* Only visible assets should be shown */
+                  assetList={visibleAssets}
+                  callbacks={{ selectAssetCallback: this.selectAsset }}
+                  {...this.props}
+                />
+              )}
             </Card>
           </div>
 
@@ -1591,6 +1684,8 @@ export default class Annotator extends Component<
             className={
               this.state.imageListCollapsed
                 ? "expanded-annotator-space"
+                : this.state.isAnalyticsMode
+                ? "annotator-space-analytics"
                 : "annotator-space"
             }
           >
@@ -1625,6 +1720,7 @@ export default class Annotator extends Component<
               ) : null}
             </Card>
           </div>
+
           <div className={"annotator-controls"}>
             <AnnotationMenu
               ref={this.menubarRef}

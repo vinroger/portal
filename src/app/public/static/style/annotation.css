@@ -24,10 +24,25 @@
   top: calc(100% - 140px);
   padding-bottom: 10px;
 }
+.image-list-analytics {
+  position: absolute;
+  flex-direction: row;
+  z-index: 20;
+  width: calc(100% - 190px);
+  height: 420px;
+  margin-right: 10px;
+  left: 0;
+  top: calc(100% - 290px);
+}
 
 .annotator-space {
   width: calc(100% - 190px);
   height: calc(100% - 150px);
+  margin-right: 10px;
+}
+.annotator-space-analytics {
+  width: calc(100% - 190px);
+  height: 67%;
   margin-right: 10px;
 }
 
@@ -39,10 +54,21 @@
 
 .image-bar {
   height: calc(100% - 70px);
+  display: flex;
   margin-top: 10px;
   padding-right: 6px;
   overflow-y: hidden;
+  
+  padding: 10px !important;
+  -ms-overflow-style: none;
+}
+.image-bar-analytics {
+  height: 64%;
   display: flex;
+  margin-top: 10px;
+  padding-right: 6px;
+  overflow-y: hidden;
+  
   padding: 10px !important;
   -ms-overflow-style: none;
 }
@@ -85,6 +111,34 @@
   background-image: none !important;
   box-shadow: none !important;
 }
+
+.analytics-button {
+  position: absolute;
+  top: 25px;
+  right: 10px;
+  height: 30px;
+  width: 30px;
+  z-index: 35;
+  min-width: 0px !important;
+  min-height: 0px !important;
+  background-color: #30404d !important;
+  background-image: none !important;
+
+}
+.analytics-button-collapsed {
+  position: absolute;
+  visibility: hidden;
+  top: 25px;
+  right: 80px;
+  height: 40px;
+  width: 40px;
+  z-index: 35;
+  min-width: 0px !important;
+  min-height: 0px !important;
+  background-color: #30404d !important;
+  background-image: none !important;
+}
+
 
 .collapse-button-effect {
   position: absolute;
